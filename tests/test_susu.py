@@ -466,3 +466,21 @@ def test_cli_handles_invalid_choices_and_input_without_crashing():
 
 def test_cli_exits_cleanly_when_input_ends():
     assert "Goodbye." in run_cli(["50"])
+
+
+def test_report_before_enough_members_explains_status(empty_group):
+    empty_group.add_member("Ama")
+    text = format_report(empty_group.generate_report())
+    assert "waiting for at least 2 members" in text
+    assert "Expected pot: GHS 50.00" in text
+
+
+def test_cli_reports_cycle_completion_and_rejects_further_activity():
+    inputs = ["10", "2", "Ama", "2", "Kofi"]
+    for _ in range(2):
+        inputs += ["3", "Ama", "10", "3", "Kofi", "10", "4"]
+    inputs += ["3", "Ama", "5", "4", "1", "6"]
+    text = run_cli(inputs)
+    assert "the cycle is complete" in text
+    assert text.count("Error: The cycle is complete") == 2  # payment + close
+    assert "CYCLE COMPLETE after 2 weeks" in text
