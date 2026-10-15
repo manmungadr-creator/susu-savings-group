@@ -229,6 +229,10 @@ class SusuGroup:
         All validation happens before any state is changed, so a rejected
         payment leaves the group exactly as it was.
         """
+        if self._cycle_complete:
+            raise CycleCompleteError(
+                "The cycle is complete: no more contributions are accepted."
+            )
         if len(self._members) < MIN_MEMBERS:
             raise NotEnoughMembersError(
                 f"Add at least {MIN_MEMBERS} members before recording payments."
