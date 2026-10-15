@@ -33,6 +33,22 @@ class InvalidMemberError(SusuError):
     """A member name is empty or already in the group."""
 
 
+class UnknownMemberError(SusuError):
+    """The named member does not belong to the group."""
+
+
+class MembershipFrozenError(SusuError):
+    """Members cannot be added once contributions have been recorded."""
+
+
+class NotEnoughMembersError(SusuError):
+    """The group needs more members before it can operate."""
+
+
+class OverpaymentError(SusuError):
+    """A payment is larger than the member's remaining balance."""
+
+
 # --------------------------------------------------------------------------
 # Money helpers
 # --------------------------------------------------------------------------
@@ -110,7 +126,15 @@ class SusuGroup:
         return self._week
 
     def add_member(self, name: str) -> Member:
-        """Add a member at the end of the joining order."""
+        """Add a member at the end of the joining order.
+
+        Membership is frozen once any contribution has been recorded, so the
+        pot size can never change after money has been paid in.
+        """
+        if self.membership_frozen:
+            raise MembershipFrozenError(
+                "Membership is frozen: contributions have already been recorded."
+            )
         if not isinstance(name, str) or not name.strip():
             raise InvalidMemberError("Member name cannot be empty.")
         display = name.strip()
@@ -120,3 +144,55 @@ class SusuGroup:
         member = Member(name=display, key=key)
         self._members.append(member)
         return member
+
+    # ----------------------------------------------------------------------
+    # Contributions
+    # ----------------------------------------------------------------------
+    @property
+    def membership_frozen(self) -> bool:
+        """True once the first contribution has been recorded."""
+        return bool(self._payouts) or any(v > ZERO for v in self._paid.values())
+
+    def _find_member(self, name: str) -> Member:
+        key = normalize_name(name) if isinstance(name, str) else ""
+        for member in self._members:
+            if member.key == key:
+                return member
+        raise UnknownMemberError(f"'{name}' is not a member of this group.")
+
+    def paid_this_week(self, name: str) -> Decimal:
+        """Cumulative amount the member has paid in the current week."""
+        return self._paid.get(self._find_member(name).key, ZERO)
+
+    def outstanding_for(self, name: str) -> Decimal:
+        """Amount the member still owes for the current week."""
+        return self.weekly_contribution - self.paid_this_week(name)
+
+    def outstanding_balances(self) -> list[tuple[str, Decimal]]:
+        """(name, amount owed) for every member, in joining order."""
+        return [(m.name, self.outstanding_for(m.name)) for m in self._members]
+
+    def members_who_owe(self) -> list[tuple[str, Decimal]]:
+        """Only the members with a balance above zero, in joining order."""
+        return [(n, owed) for n, owed in self.outstanding_balances() if owed > ZERO]
+
+    def record_contribution(self, name: str, amount: object) -> Decimal:
+        """Record a (possibly partial) payment; return the new balance owed.
+
+        All validation happens before any state is changed, so a rejected
+        payment leaves the group exactly as it was.
+        """
+        if len(self._members) < MIN_MEMBERS:
+            raise NotEnoughMembersError(
+                f"Add at least {MIN_MEMBERS} members before recording payments."
+            )
+        member = self._find_member(name)
+        value = parse_money(amount)
+        remaining = self.outstanding_for(member.name)
+        if value > remaining:
+            raise OverpaymentError(
+                f"{member.name} only owes {format_money(remaining)} this week; "
+                f"cannot accept {format_money(value)}."
+            )
+        self._paid[member.key] = self._paid.get(member.key, ZERO) + value
+        return remaining - value
