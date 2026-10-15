@@ -414,3 +414,55 @@ def test_report_when_cycle_complete(trio):
     assert "CYCLE COMPLETE" in text
     assert "Expected recipient" not in text
     assert text.count("received GHS 150.00") == 3
+
+
+# --------------------------------------------------------------------------
+# Command-line interface (G)
+# --------------------------------------------------------------------------
+def run_cli(inputs):
+    """Run main.run with scripted input; return everything it printed."""
+    import main
+
+    answers = iter(inputs)
+    output = []
+
+    def fake_input(prompt=""):
+        output.append(prompt)
+        try:
+            return next(answers)
+        except StopIteration:
+            raise EOFError
+
+    main.run(ask=fake_input, show=output.append)
+    return "\n".join(output)
+
+
+def test_cli_acceptance_scenario():
+    text = run_cli([
+        "50",
+        "2", "Ama", "2", "Kofi", "2", "Esi",
+        "3", "Ama", "50", "3", "Kofi", "50", "3", "Esi", "30",
+        "4",                      # must fail: Esi owes 20.00
+        "5",                      # no payouts yet
+        "3", "Esi", "20",
+        "4",                      # succeeds
+        "5", "6",
+    ])
+    assert "Cannot close week 1" in text and "Esi owes GHS 20.00" in text
+    assert "No payouts yet." in text
+    assert "Week 1 closed. Ama receives GHS 150.00." in text
+    assert "Now in week 2. Next recipient: Kofi." in text
+    assert "Week 1: Ama received GHS 150.00" in text
+    assert "Goodbye." in text
+
+
+def test_cli_handles_invalid_choices_and_input_without_crashing():
+    text = run_cli(["0", "abc", "50", "9", "", "2", "  ", "3", "Nobody", "5", "6"])
+    assert text.count("Error:") >= 4  # bad setup, empty name, unknown member...
+    assert "Invalid choice" in text
+    assert "Traceback" not in text
+    assert "Goodbye." in text
+
+
+def test_cli_exits_cleanly_when_input_ends():
+    assert "Goodbye." in run_cli(["50"])
