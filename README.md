@@ -18,19 +18,19 @@ order, and the group moves on to the next week.
 
 ## Technology stack
 
-- Python 3.11 or later (developed and tested on Python 3.12)
+- Python 3.12
 - `decimal.Decimal` for all money, standard library only at runtime
 - `pytest` for tests
 
 ## Prerequisites
 
-- Python 3.11+ and `git`
+- Python 3.12 and `git`
 - Internet access is needed only once, to install `pytest`
 
 ## Get the code
 
 ```bash
-git clone <your-repository-url> susu-savings-group
+git clone (https://github.com/manmungadr-creator/susu-savings-group)
 cd susu-savings-group
 ```
 
